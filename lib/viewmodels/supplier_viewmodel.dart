@@ -4,14 +4,12 @@ import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart';
 import '../models/rfq_model.dart';
 import '../models/rfq_bid_model.dart';
 import '../models/material_model.dart';
 import '../models/order_model.dart';
 import '../models/rating_model.dart';
 import '../models/transaction_model.dart';
-import '../models/payment_proof_model.dart';
 import '../constants/app_constants.dart';
 import '../constants/firestore_paths.dart';
 import '../models/company_model.dart';
@@ -46,31 +44,20 @@ class SupplierViewModel extends ChangeNotifier {
   final NotificationService _notificationService;
   final CloudFunctionService _cloudFunctions;
   final FirebaseFirestore _db;
-  final Future<String?> Function({
-    required List<int> bytes,
-    required String folder,
-    String filename,
-  }) _uploadImageBytes;
 
   SupplierViewModel(
     this._materialRepo,
     this._orderRepo,
     this._transactionRepo,
     this._storageService,
-    PriceHistoryRepository _,
+    PriceHistoryRepository priceHistoryRepo,
     this._cloudFunctions,
     this._userRepo,
     this._companyRepo,
     this._partnershipRepo,
     this._notificationService, {
     FirebaseFirestore? firestore,
-    Future<String?> Function({
-      required List<int> bytes,
-      required String folder,
-      String filename,
-    })? uploadImageBytes,
-  })  : _db = firestore ?? FirebaseFirestore.instance,
-        _uploadImageBytes = uploadImageBytes ?? CloudinaryService.uploadImageBytes;
+  })  : _db = firestore ?? FirebaseFirestore.instance;
 
   static String monthKey([DateTime? date]) =>
       DateFormat('yyyy-MM').format(date ?? DateTime.now());
@@ -88,8 +75,6 @@ class SupplierViewModel extends ChangeNotifier {
   List<RatingModel> _ratings = [];
   List<TransactionModel> _transactions = [];
   List<TransactionModel> _allCommissions = [];
-  List<PaymentProofModel> _confirmedCommissionPayments = [];
-  List<PaymentProofModel> _pendingCommissionPayments = [];
   
   List<CompanyModel> _companies = [];
   List<CompanyModel> _companyDirectory = [];
@@ -120,7 +105,6 @@ class SupplierViewModel extends ChangeNotifier {
   StreamSubscription? _materialsSubscription;
   StreamSubscription? _ordersSubscription;
   StreamSubscription? _commissionsSub;
-  StreamSubscription? _paymentsSub;
   StreamSubscription? _invitationsSubscription;
   StreamSubscription? _ratingsSubscription;
   StreamSubscription? _supplierRestrictionSub;
@@ -134,16 +118,21 @@ class SupplierViewModel extends ChangeNotifier {
   bool _ratingsInitialized = false;
 
   // --- Commission Ledger Getters ---
-  double get totalCommissionGenerated => _allCommissions.fold(0.0, (sum, tx) => sum + tx.commissionAmount);
-  double get totalCommissionPaid => _confirmedCommissionPayments.fold(0.0, (sum, p) => sum + p.amount);
+  double get totalCommissionGenerated => _allCommissions.fold(0.0, (acc, tx) => acc + tx.commissionAmount);
+  double get totalCommissionPaid => _allCommissions.where((tx) => tx.isSettled).fold(0.0, (acc, tx) => acc + tx.commissionAmount);
   double get commissionOwed {
-    final owed = totalCommissionGenerated - totalCommissionPaid;
+    final owed = _allCommissions.where((tx) => tx.isUnsettled).fold(0.0, (acc, tx) => acc + tx.commissionAmount);
     return owed < 0.01 ? 0 : owed;
   }
-  double get pendingCommissionApproval => _pendingCommissionPayments.fold(0.0, (sum, p) => sum + p.amount);
+  double get pendingCommissionApproval => 0.0; // Manual flow removed
+
+  List<String> get unsettledTransactionIds => _allCommissions
+      .where((tx) => tx.isUnsettled)
+      .map((tx) => tx.txId)
+      .toList();
 
   // --- Stats and Aggregates ---
-  double get totalEarnings => _orders.where((o) => o.status == 'confirmed').fold(0.0, (sum, o) => sum + o.totalAmount);
+  double get totalEarnings => _orders.where((o) => o.status == 'confirmed').fold(0.0, (acc, o) => acc + o.totalAmount);
   double get netEarnings => totalEarnings * (1 - AppConstants.commissionRate);
   
   double grossSalesForMonth(String month) {
@@ -154,7 +143,7 @@ class SupplierViewModel extends ChangeNotifier {
       if (s != 'confirmed') return false;
       final date = o.confirmedAt ?? o.createdAt;
       return !date.isBefore(start) && date.isBefore(end);
-    }).fold(0.0, (sum, o) => sum + o.totalAmount);
+    }).fold(0.0, (acc, o) => acc + o.totalAmount);
   }
 
   double netEarningsForMonth(String month) {
@@ -194,7 +183,7 @@ class SupplierViewModel extends ChangeNotifier {
   bool get isCommissionRestricted => _commissionRestricted;
   String? get commissionRestrictionReason => _commissionRestrictionReason;
   String get status => _status;
-  List<PaymentProofModel> get paymentHistory => [..._confirmedCommissionPayments, ..._pendingCommissionPayments]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  List<dynamic> get paymentHistory => []; // Manual flow removed
 
   int get totalMaterialsCount => _materials.length;
   int get pendingOrdersCount => _orders.where((o) {
@@ -294,18 +283,6 @@ class SupplierViewModel extends ChangeNotifier {
           notifyListeners();
         }, onError: (e) => _onDashboardStreamError('earnings', e));
 
-    _paymentsSub?.cancel();
-    _paymentsSub = _db.collection('payment_proofs')
-        .where('payerId', isEqualTo: uid)
-        .where('type', isEqualTo: 'commission')
-        .snapshots().listen((snap) {
-          final all = snap.docs.map((d) => PaymentProofModel.fromMap(d.id, d.data())).toList();
-          // Include 'settled' status so commissionOwed decreases when Admin marks as settled
-          _confirmedCommissionPayments = all.where((p) => p.status == 'confirmed' || p.status == 'approved' || p.status == 'settled').toList();
-          _pendingCommissionPayments = all.where((p) => p.status == 'pending').toList();
-          notifyListeners();
-        });
-
     _db.collection('commission_ensure_jobs').doc(uid).set({
       'uid': uid,
       'status': 'pending',
@@ -335,6 +312,7 @@ class SupplierViewModel extends ChangeNotifier {
         await _transactionRepo.createUnsettledCommissionTransaction(
           orderId: doc.id,
           companyId: (data['companyId'] ?? '').toString(),
+          companyName: data['companyName'] as String?,
           supplierUid: uid,
           totalAmount: totalAmount,
           commissionAmount: commissionAmount,
@@ -490,8 +468,8 @@ class SupplierViewModel extends ChangeNotifier {
     final txs = _allSupplierTransactions.where((t) => t.companyId == companyId).toList();
     final orderIds = orders.map((o) => o.orderId).toSet();
     final companyRatings = _allSupplierRatings.where((r) => orderIds.contains(r.orderId)).toList();
-    final earnings = txs.fold<double>(0, (sum, tx) => sum + tx.supplierEarning);
-    final avgRating = companyRatings.isEmpty ? 0.0 : companyRatings.fold<double>(0, (sum, r) => sum + r.rating) / companyRatings.length;
+    final earnings = txs.fold<double>(0, (acc, tx) => acc + tx.supplierEarning);
+    final avgRating = companyRatings.isEmpty ? 0.0 : companyRatings.fold<double>(0, (acc, r) => acc + r.rating) / companyRatings.length;
     return PartnerCompanyStats(totalOrders: orders.length, avgRating: avgRating, totalEarnings: earnings);
   }
 
@@ -905,40 +883,7 @@ class SupplierViewModel extends ChangeNotifier {
     _isDashboardLoading = false; notifyListeners();
   }
 
-  Future<bool> submitCommissionPayment({required double amount, required String method, required XFile screenshotFile}) async {
-    if (_supplierUid == null) return false;
-    if (amount <= 0 || amount > commissionOwed + 0.01) { _error = "Invalid amount"; notifyListeners(); return false; }
-    _isLoading = true; notifyListeners();
-    try {
-      final url = await _uploadImageBytes(bytes: await screenshotFile.readAsBytes(), folder: 'commission_proofs/$_supplierUid', filename: 'comm_${DateTime.now().millisecondsSinceEpoch}.jpg');
-      if (url == null) throw Exception("Upload failed");
 
-      // Collect IDs of unsettled transactions to link them for source-of-truth updates
-      final unsettledTxIds = _allCommissions
-          .where((tx) => tx.status.toLowerCase() == 'unsettled' || tx.status.toLowerCase() == 'pending')
-          .map((tx) => tx.txId)
-          .toList();
-
-      final proof = PaymentProofModel(
-        id: '', 
-        payerId: _supplierUid!, 
-        companyId: '', 
-        payerName: _profile?.name ?? 'Supplier', 
-        payerRole: 'Supplier', 
-        amount: amount, 
-        method: method, 
-        screenshotUrl: url, 
-        status: 'pending', 
-        type: 'commission', 
-        createdAt: DateTime.now(),
-        relatedTransactions: unsettledTxIds,
-      );
-      
-      await _db.collection('payment_proofs').add(proof.toMap());
-      _successMessage = 'Payment submitted.';
-      return true;
-    } catch (e) { _error = e.toString(); return false; } finally { _isLoading = false; notifyListeners(); }
-  }
 
   Stream<List<RfqModel>> streamOpenRfqsForSupplier() {
     if (_supplierUid == null) return Stream.value([]);
@@ -1048,7 +993,7 @@ class SupplierViewModel extends ChangeNotifier {
   void _cancelSubscriptions() {
     _statusSubscription?.cancel(); _partnershipRequestsSub?.cancel(); _linkedCompaniesSub?.cancel();
     _companiesSubscription?.cancel(); _materialsSubscription?.cancel(); _ordersSubscription?.cancel();
-    _commissionsSub?.cancel(); _paymentsSub?.cancel(); _invitationsSubscription?.cancel();
+    _commissionsSub?.cancel(); _invitationsSubscription?.cancel();
     _ratingsSubscription?.cancel(); _supplierRestrictionSub?.cancel();
   }
 }

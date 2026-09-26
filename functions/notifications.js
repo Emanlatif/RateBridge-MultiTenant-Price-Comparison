@@ -173,23 +173,7 @@ exports.onUserRegistration = functions.firestore
     return null;
   });
 
-exports.onPaymentProofCreated = functions.firestore
-  .document('payment_proofs/{proofId}')
-  .onCreate(async (snap, context) => {
-    const proof = snap.data();
-    const adminUids = await getAdminUids();
-    const typeLabel = proof.type === 'subscription' ? 'Subscription' : 'Commission';
-    
-    for (const adminUid of adminUids) {
-      await writeNotificationRecord(adminUid, {
-        type: 'payment',
-        title: 'New Payment Proof',
-        body: `${proof.payerName} submitted proof for ${typeLabel}.`,
-        data: { proofId: snap.id, payerId: proof.payerId, type: proof.type }
-      });
-    }
-    return null;
-  });
+
 
 exports.onDisputeCreated = functions.firestore
   .document('disputes/{disputeId}')

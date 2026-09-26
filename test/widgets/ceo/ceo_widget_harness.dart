@@ -434,9 +434,6 @@ void stubSubscriptionViewModel(MockSubscriptionViewModel sub) {
   when(() => sub.successMessage).thenReturn(null);
   when(() => sub.currentSubscription).thenReturn(null);
   when(() => sub.history).thenReturn(const []);
-  when(() => sub.pendingPayment).thenReturn(null);
-  when(() => sub.isWaitingVerification).thenReturn(false);
-  when(() => sub.hasPendingPayment).thenReturn(false);
   when(sub.clearMessages).thenReturn(null);
   when(() => sub.loadSubscription(any())).thenAnswer((_) async {});
   when(() => sub.cancelSubscription(any())).thenAnswer((_) async {});

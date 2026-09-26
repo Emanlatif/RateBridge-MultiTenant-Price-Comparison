@@ -347,7 +347,7 @@ class AuthViewModel extends ChangeNotifier {
       
       // Notify Admins
       if (_notificationService != null) {
-        await _notificationService!.notifyAllAdminsOfNewRegistration(
+        await _notificationService.notifyAllAdminsOfNewRegistration(
           name: fullName.trim(),
           role: 'CEO',
           targetUid: uid,
@@ -518,7 +518,7 @@ class AuthViewModel extends ChangeNotifier {
 
       // Notify Admins
       if (_notificationService != null) {
-        await _notificationService!.notifyAllAdminsOfNewRegistration(
+        await _notificationService.notifyAllAdminsOfNewRegistration(
           name: businessName.trim(),
           role: 'Supplier',
           targetUid: uid,

@@ -5,14 +5,12 @@ import '../models/order_model.dart';
 import '../models/rating_model.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/transaction_repository.dart';
-import '../services/cloud_function_service.dart';
 import '../constants/app_constants.dart';
 import 'auth_viewmodel.dart';
 
 class OrderViewModel extends ChangeNotifier {
   final OrderRepository _orderRepo;
   final TransactionRepository _transactionRepo;
-  final CloudFunctionService _cloudFunctions;
 
   List<OrderModel> _orders = [];
   bool _isLoading = false;
@@ -23,7 +21,7 @@ class OrderViewModel extends ChangeNotifier {
   bool? _hasExistingRating;
   StreamSubscription? _ordersSubscription;
 
-  OrderViewModel(this._orderRepo, this._transactionRepo, this._cloudFunctions);
+  OrderViewModel(this._orderRepo, this._transactionRepo);
 
   void updateAuth(AuthViewModel auth) {
     notifyListeners();
@@ -77,6 +75,7 @@ class OrderViewModel extends ChangeNotifier {
       await _transactionRepo.createUnsettledCommissionTransaction(
         orderId: orderId,
         companyId: companyId,
+        companyName: order.companyName,
         supplierUid: order.supplierId,
         totalAmount: order.totalAmount,
         commissionAmount: commissionAmount,

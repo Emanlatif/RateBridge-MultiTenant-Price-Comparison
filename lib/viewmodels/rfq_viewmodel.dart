@@ -2,22 +2,19 @@ import 'package:flutter/material.dart';
 import '../models/rfq_model.dart';
 import '../models/rfq_bid_model.dart';
 import '../models/supplier_model.dart';
-import '../services/cloud_function_service.dart';
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
 import '../utils/app_exception.dart';
 
 class RfqViewModel extends ChangeNotifier {
   final FirestoreService _firestoreService;
-  final CloudFunctionService _cloudFunctions;
   final NotificationService? _notificationService;
 
   bool _isLoading = false;
   String? _error;
 
   RfqViewModel(
-    this._firestoreService,
-    this._cloudFunctions, [
+    this._firestoreService, [
     this._notificationService,
   ]);
 

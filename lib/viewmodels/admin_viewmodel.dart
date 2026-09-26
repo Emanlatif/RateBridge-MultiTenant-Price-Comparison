@@ -7,13 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/company_model.dart';
 import '../models/user_model.dart';
 import '../models/category_model.dart';
-import '../models/payment_proof_model.dart';
-import '../models/subscription_model.dart';
-import '../models/transaction_model.dart';
-import '../services/notification_service.dart';
 import '../utils/invite_code_generator.dart';
 import '../utils/app_exception.dart';
-import '../constants/firestore_paths.dart';
 import 'auth_viewmodel.dart';
 
 // New Admin Models
@@ -45,7 +40,6 @@ class PlatformTransaction {
 
 class AdminViewModel extends ChangeNotifier {
   final FirebaseFirestore _db;
-  final NotificationService? _notificationService;
 
   String? _uid;
   String? _adminName;
@@ -64,22 +58,8 @@ class AdminViewModel extends ChangeNotifier {
   List<PlatformTransaction> _transactions = [];
   List<PlatformTransaction> get transactions => _transactions;
 
-  List<PaymentProofModel> _pendingPayments = [];
-  List<PaymentProofModel> get pendingPayments => _pendingPayments;
-
-  List<PaymentProofModel> _confirmedPayments = [];
-  List<PaymentProofModel> get confirmedPayments => _confirmedPayments;
-
-  StreamSubscription? _paymentQueueSub;
-
-  AdminViewModel([this._notificationService, FirebaseFirestore? firestore])
+  AdminViewModel([FirebaseFirestore? firestore])
       : _db = firestore ?? FirebaseFirestore.instance;
-
-  @override
-  void dispose() {
-    _paymentQueueSub?.cancel();
-    super.dispose();
-  }
 
   void updateAuth(AuthViewModel auth) {
     if (auth.user != null && (auth.user!.role.toLowerCase() == 'admin' || auth.user!.role.toLowerCase() == 'administrator')) {
@@ -87,7 +67,6 @@ class AdminViewModel extends ChangeNotifier {
         _uid = auth.user!.uid;
         _adminName = auth.user!.name;
         loadDashboardData();
-        loadPaymentQueue();
         loadCEOs();
         loadSuppliers();
       }
@@ -183,19 +162,28 @@ class AdminViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       final companySnap = await _db.collection('companies').get();
-      _companies = companySnap.docs.map((doc) => CompanyModel.fromMap(doc.data())).toList();
+      _companies = companySnap.docs.map((doc) {
+        final data = doc.data();
+        if (data['id'] == null) data['id'] = doc.id;
+        return CompanyModel.fromMap(data);
+      }).toList();
 
       final txSnap = await _db.collection('transactions').limit(50).get();
       _transactions = txSnap.docs.map((d) {
         final data = d.data();
+        final type = data['type'] as String? ?? 'order_payment';
+        final status = data['status'] as String? ?? 'pending';
+        final amount = (data['totalAmount'] as num? ?? data['amount'] as num? ?? 0).toDouble();
+        final date = (data['createdAt'] as Timestamp? ?? data['date'] as Timestamp?)?.toDate();
+
         return PlatformTransaction(
           id: d.id,
-          type: data['type'] as String? ?? 'order_payment',
-          companyName: data['companyName'] as String? ?? '',
+          type: type,
+          companyName: data['companyName'] as String? ?? 'Loading...',
           supplierName: data['supplierName'] as String?,
-          amount: (data['amount'] as num? ?? 0).toDouble(),
-          status: data['status'] as String? ?? 'pending',
-          date: (data['date'] as Timestamp?)?.toDate(),
+          amount: amount,
+          status: status,
+          date: date,
           payerRole: data['payerRole'] as String? ?? '',
           screenshotUrl: data['screenshotUrl'] as String?,
           rejectionReason: data['rejectionReason'] as String?,
@@ -209,145 +197,6 @@ class AdminViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> loadPaymentQueue() async {
-    _paymentQueueSub?.cancel();
-    _isLoading = true;
-    notifyListeners();
-
-    _paymentQueueSub = _db.collection('payment_proofs')
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .listen((snap) {
-      final all = snap.docs.map((doc) => PaymentProofModel.fromMap(doc.id, doc.data())).toList();
-      _pendingPayments = all.where((p) => p.status == 'pending').toList();
-      _confirmedPayments = all.where((p) => p.status != 'pending' && p.status != 'rejected').toList();
-      _isLoading = false;
-      notifyListeners();
-    }, onError: (e) {
-      developer.log("Error watching payment queue: $e");
-      _isLoading = false;
-      notifyListeners();
-    });
-  }
-
-  Future<void> confirmPayment(PaymentProofModel payment) async {
-    if (payment.status == 'confirmed' || payment.status == 'settled') return;
-    _isLoading = true;
-    notifyListeners();
-    try {
-      final now = DateTime.now();
-      final batch = _db.batch();
-      final paymentRef = _db.collection('payment_proofs').doc(payment.id);
-      
-      final targetStatus = payment.type == 'commission' ? 'settled' : 'confirmed';
-      
-      batch.update(paymentRef, {
-        'status': targetStatus,
-        'confirmedAt': FieldValue.serverTimestamp(),
-        'confirmedBy': _uid ?? 'admin',
-      });
-
-      if (payment.type == 'subscription' && payment.planId != null) {
-        final plan = kPlans.firstWhere((p) => p.planKey == payment.planId, orElse: () => kPlans.first);
-        final expiry = plan.durationDays > 0 ? now.add(Duration(days: plan.durationDays)) : null;
-        final subRef = _db.collection('subscriptions').doc(payment.companyId);
-        batch.set(subRef, {
-          'plan': plan.planKey,
-          'status': 'active',
-          'startedAt': FieldValue.serverTimestamp(),
-          'expiresAt': expiry != null ? Timestamp.fromDate(expiry) : null,
-          'adminGranted': false,
-        }, SetOptions(merge: true));
-        final historyEntry = SubscriptionHistoryEntry(
-          plan: plan.planKey,
-          action: 'purchased',
-          date: now,
-          amountPaid: payment.amount.toInt(),
-          note: 'Confirmed by Admin',
-        );
-        batch.update(subRef, {
-          'history': FieldValue.arrayUnion([historyEntry.toMap()]),
-        });
-        final companyRef = _db.collection('companies').doc(payment.companyId);
-        batch.update(companyRef, {
-          'plan': plan.planKey,
-          'planExpiry': expiry != null ? Timestamp.fromDate(expiry) : null,
-          'aiEnabled': plan.aiUnlocked,
-          'status': 'active',
-        });
-      } 
-      else if (payment.type == 'commission') {
-        if (payment.relatedTransactions != null) {
-          for (var txId in payment.relatedTransactions!) {
-            batch.update(_db.collection(FirestorePaths.transactionsCol).doc(txId), {
-              'status': 'settled',
-              'settledAt': FieldValue.serverTimestamp(),
-              'settledBy': _uid ?? 'admin',
-              'paymentProofId': payment.id,
-            });
-          }
-        }
-      }
-      
-      await batch.commit();
-
-      // Send notifications AFTER successful batch commit to prevent path errors from blocking the DB update
-      if (_notificationService != null) {
-        if (payment.type == 'subscription') {
-          final plan = kPlans.firstWhere((p) => p.planKey == payment.planId, orElse: () => kPlans.first);
-          await _notificationService!.notifySubscriptionDecision(
-            ceoUid: payment.payerId,
-            companyId: payment.companyId,
-            title: 'Subscription Activated! ✅',
-            message: 'Your ${plan.name} subscription has been activated successfully.',
-            data: {'planId': plan.planKey, 'status': 'active'},
-          );
-        } else if (payment.type == 'commission') {
-          await _notificationService!.notifyPaymentStatus(
-            userId: payment.payerId,
-            companyId: payment.companyId,
-            title: 'Commission Payment Confirmed ✅',
-            message: 'Your commission payment of Rs ${payment.amount} has been settled.',
-            data: {'status': 'settled'},
-          );
-        }
-      }
-      
-      await _logAction(actionType: 'confirm_payment', targetType: 'payment_proof', targetId: payment.id, description: 'Confirmed ${payment.type} payment of Rs ${payment.amount} from ${payment.payerName}');
-    } catch (e) {
-      developer.log("Error confirming payment: $e");
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> rejectPayment(PaymentProofModel payment, String reason) async {
-    _isLoading = true;
-    notifyListeners();
-    try {
-      await _db.collection('payment_proofs').doc(payment.id).update({
-        'status': 'rejected',
-        'adminNotes': reason,
-      });
-      if (_notificationService != null) {
-        await _notificationService!.notifyPaymentStatus(
-          userId: payment.payerId,
-          companyId: payment.companyId,
-          title: 'Payment Rejected ❌',
-          message: 'Your payment proof for ${payment.type} was rejected. Reason: $reason',
-          data: {'status': 'rejected', 'reason': reason},
-        );
-      }
-      await _logAction(actionType: 'reject_payment', targetType: 'payment_proof', targetId: payment.id, description: 'Rejected ${payment.type} payment from ${payment.payerName}', reason: reason);
-    } catch (e) {
-      developer.log("Error rejecting payment: $e");
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
   Future<void> loadCEOs() async {
     _isLoading = true;
     notifyListeners();
@@ -355,11 +204,19 @@ class AdminViewModel extends ChangeNotifier {
       final userSnap = await _db.collection('users').where('role', isEqualTo: 'CEO').get();
       List<Map<String, dynamic>> temp = [];
       for (var doc in userSnap.docs) {
-        final ceo = UserModel.fromMap(doc.data());
+        final data = doc.data();
+        if (data['uid'] == null) data['uid'] = doc.id;
+        final ceo = UserModel.fromMap(data);
         final companySnap = await _db.collection('companies').doc(ceo.companyId).get();
+        CompanyModel? company;
+        if (companySnap.exists && companySnap.data() != null) {
+          final cData = companySnap.data()!;
+          if (cData['id'] == null) cData['id'] = companySnap.id;
+          company = CompanyModel.fromMap(cData);
+        }
         temp.add({
           'ceo': ceo,
-          'company': companySnap.exists ? CompanyModel.fromMap(companySnap.data()!) : null,
+          'company': company,
         });
       }
       _ceosList = temp;

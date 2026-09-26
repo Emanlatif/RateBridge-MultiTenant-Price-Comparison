@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class OrderModel {
   final String orderId;
   final String companyId;
+  final String? companyName;
   final String fieldUserUid;
   final String supplierId;
   final String materialId;
@@ -34,6 +35,7 @@ class OrderModel {
   const OrderModel({
     required this.orderId,
     required this.companyId,
+    this.companyName,
     required this.fieldUserUid,
     required this.supplierId,
     required this.materialId,
@@ -68,6 +70,7 @@ class OrderModel {
   factory OrderModel.fromMap(String id, Map<String, dynamic> map) => OrderModel(
     orderId: id,
     companyId: map['companyId'] ?? '',
+    companyName: map['companyName'],
     fieldUserUid: map['fieldUserUid'] ?? '',
     supplierId: map['supplierId'] ?? map['supplierUid'] ?? '',
     materialId: map['materialId'] ?? '',
@@ -103,6 +106,7 @@ class OrderModel {
 
   Map<String, dynamic> toMap() => {
     'companyId': companyId,
+    if (companyName != null) 'companyName': companyName,
     'fieldUserUid': fieldUserUid,
     'supplierId': supplierId,
     'materialId': materialId,
@@ -135,6 +139,7 @@ class OrderModel {
   OrderModel copyWith({
     String? orderId,
     String? companyId,
+    String? companyName,
     String? fieldUserUid,
     String? supplierId,
     String? materialId,
@@ -166,6 +171,7 @@ class OrderModel {
     return OrderModel(
       orderId: orderId ?? this.orderId,
       companyId: companyId ?? this.companyId,
+      companyName: companyName ?? this.companyName,
       fieldUserUid: fieldUserUid ?? this.fieldUserUid,
       supplierId: supplierId ?? this.supplierId,
       materialId: materialId ?? this.materialId,

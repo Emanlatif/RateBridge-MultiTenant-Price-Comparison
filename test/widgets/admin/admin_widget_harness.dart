@@ -9,7 +9,6 @@ import 'package:ratebridge/models/audit_log_model.dart';
 import 'package:ratebridge/models/category_model.dart';
 import 'package:ratebridge/models/dispute_model.dart';
 import 'package:ratebridge/models/notification_model.dart';
-import 'package:ratebridge/models/payment_proof_model.dart';
 import 'package:ratebridge/models/subscription_model.dart';
 import 'package:ratebridge/models/transaction_model.dart';
 import 'package:ratebridge/models/user_model.dart';
@@ -36,29 +35,6 @@ UserModel adminUser() {
     city: 'Lahore',
     status: 'active',
     createdAt: DateTime.utc(2026, 1, 1),
-  );
-}
-
-PaymentProofModel samplePayment({
-  String id = 'pay-1',
-  String type = 'subscription',
-  String status = 'pending',
-  String payerName = 'Ali CEO',
-}) {
-  return PaymentProofModel(
-    id: id,
-    payerId: 'ceo-1',
-    companyId: 'co-1',
-    payerName: payerName,
-    payerRole: type == 'commission' ? 'Supplier' : 'CEO',
-    amount: 1000,
-    method: 'bank_transfer',
-    screenshotUrl: '',
-    status: status,
-    type: type,
-    planId: 'basic',
-    planName: 'Basic',
-    createdAt: DateTime.utc(2026, 4, 1),
   );
 }
 
@@ -153,11 +129,10 @@ void stubNotificationViewModel(MockNotificationViewModel notif) {
 
 void stubAdminViewModel(MockAdminViewModel admin) {
   when(() => admin.isLoading).thenReturn(false);
-  when(() => admin.pendingPayments).thenReturn(const []);
-  when(() => admin.confirmedPayments).thenReturn(const []);
   when(() => admin.ceosList).thenReturn(const []);
   when(() => admin.suppliersList).thenReturn(const []);
   when(() => admin.companiesList).thenReturn(const []);
+  when(() => admin.transactions).thenReturn(const <PlatformTransaction>[]);
   when(() => admin.watchPendingUsersCount())
       .thenAnswer((_) => Stream<int>.value(0));
   when(() => admin.watchActiveUsersCount())
@@ -166,7 +141,6 @@ void stubAdminViewModel(MockAdminViewModel admin) {
       .thenAnswer((_) => Stream<int>.value(0));
   when(() => admin.watchCategories())
       .thenAnswer((_) => Stream<List<CategoryModel>>.value(const []));
-  when(() => admin.loadPaymentQueue()).thenAnswer((_) async {});
   when(() => admin.loadDashboardData()).thenAnswer((_) async {});
   when(() => admin.acceptCEO(any(), any())).thenAnswer((_) async {});
   when(() => admin.rejectCEO(any(), any(), any())).thenAnswer((_) async {});
@@ -177,8 +151,6 @@ void stubAdminViewModel(MockAdminViewModel admin) {
   when(() => admin.suspendSupplier(any())).thenAnswer((_) async {});
   when(() => admin.reactivateSupplier(any())).thenAnswer((_) async {});
   when(() => admin.deleteSupplierPermanently(any())).thenAnswer((_) async {});
-  when(() => admin.confirmPayment(any())).thenAnswer((_) async {});
-  when(() => admin.rejectPayment(any(), any())).thenAnswer((_) async {});
   when(() => admin.setCategoryActive(any(), any())).thenAnswer((_) async {});
   when(() => admin.addCategory(any(), any(), any(), any()))
       .thenAnswer((_) async {});
@@ -220,13 +192,6 @@ void stubSubscriptionViewModel(MockSubscriptionViewModel sub) {
   when(() => sub.error).thenReturn(null);
   when(() => sub.successMessage).thenReturn(null);
   when(sub.clearMessages).thenReturn(null);
-  when(
-    () => sub.adminGrantPlan(
-      companyId: any(named: 'companyId'),
-      plan: any(named: 'plan'),
-      note: any(named: 'note'),
-    ),
-  ).thenAnswer((_) async {});
 }
 
 void useLargeSurface(WidgetTester tester) {
@@ -284,7 +249,6 @@ void registerAdminWidgetFallbacks() {
   registerFallbackValue(false);
   registerFallbackValue(<String>[]);
   registerFallbackValue(<String, dynamic>{});
-  registerFallbackValue(samplePayment());
   registerFallbackValue(kPlans[1]);
 }
 

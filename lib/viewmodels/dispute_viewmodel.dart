@@ -1,18 +1,15 @@
 import 'package:flutter/material.dart';
 import '../models/dispute_model.dart';
-import '../services/cloud_function_service.dart';
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
 import '../utils/app_exception.dart';
 
 class DisputeViewModel extends ChangeNotifier {
   final FirestoreService _firestoreService;
-  final CloudFunctionService _cloudFunctions;
   final NotificationService? _notificationService;
 
   DisputeViewModel(
-    this._firestoreService,
-    this._cloudFunctions, [
+    this._firestoreService, [
     this._notificationService,
   ]);
 

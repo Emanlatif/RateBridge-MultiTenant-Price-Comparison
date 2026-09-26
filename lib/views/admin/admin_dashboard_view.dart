@@ -164,7 +164,7 @@ class _AdminHomeOverviewState extends State<_AdminHomeOverview> {
         notif.loadNotifications(uid);
         notif.watchUnreadCount(uid);
       }
-      context.read<AdminViewModel>().loadPaymentQueue();
+      context.read<AdminViewModel>().loadDashboardData();
     });
   }
 
@@ -186,7 +186,7 @@ class _AdminHomeOverviewState extends State<_AdminHomeOverview> {
   }
 
   Future<void> _refresh() {
-    return context.read<AdminViewModel>().loadPaymentQueue();
+    return context.read<AdminViewModel>().loadDashboardData();
   }
 
   @override
@@ -195,7 +195,6 @@ class _AdminHomeOverviewState extends State<_AdminHomeOverview> {
     final auth = context.watch<AuthViewModel>();
     final notifVM = context.watch<NotificationViewModel>();
     final user = auth.user;
-    final pendingPayments = adminVM.pendingPayments.length;
 
     return RefreshIndicator(
       color: AdminColors.navy,
@@ -261,15 +260,6 @@ class _AdminHomeOverviewState extends State<_AdminHomeOverview> {
                                           : 'You have $pending accounts waiting for approval',
                                       actionLabel: 'Review now →',
                                       onTap: () => widget.onAction(3),
-                                    ),
-                                    const SizedBox(height: 16),
-                                  ] else if (pendingPayments > 0) ...[
-                                    _AttentionBanner(
-                                      message: pendingPayments == 1
-                                          ? 'You have 1 payment waiting for review'
-                                          : 'You have $pendingPayments payments waiting for review',
-                                      actionLabel: 'Review now →',
-                                      onTap: () => widget.onAction(2),
                                     ),
                                     const SizedBox(height: 16),
                                   ],

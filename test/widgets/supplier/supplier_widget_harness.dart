@@ -18,7 +18,6 @@ import 'package:ratebridge/models/notification_model.dart';
 import 'package:ratebridge/models/order_model.dart';
 import 'package:ratebridge/models/partner_company_stats.dart';
 import 'package:ratebridge/models/partnership_request_model.dart';
-import 'package:ratebridge/models/payment_proof_model.dart';
 import 'package:ratebridge/models/rating_model.dart';
 import 'package:ratebridge/models/rfq_bid_model.dart';
 import 'package:ratebridge/models/rfq_model.dart';
@@ -302,25 +301,6 @@ RfqBidModel sampleBid({
   );
 }
 
-PaymentProofModel samplePaymentProof({
-  String id = 'pay-1',
-  String status = 'pending',
-}) {
-  return PaymentProofModel(
-    id: id,
-    payerId: 'sup-1',
-    companyId: 'co-1',
-    payerName: 'Skyline Materials',
-    payerRole: 'Supplier',
-    amount: 2500,
-    method: 'bank_transfer',
-    screenshotUrl: '',
-    status: status,
-    type: 'commission',
-    createdAt: DateTime.utc(2026, 4, 5),
-  );
-}
-
 void stubAuthViewModel(MockAuthViewModel auth, {UserModel? user}) {
   final current = user ?? supplierUser();
   when(() => auth.user).thenReturn(current);
@@ -471,7 +451,6 @@ void stubSupplierViewModel(
   when(() => vm.isCommissionRestricted).thenReturn(false);
   when(() => vm.commissionRestrictionReason).thenReturn(null);
   when(() => vm.status).thenReturn('active');
-  when(() => vm.paymentHistory).thenReturn(const []);
   when(() => vm.totalMaterialsCount).thenReturn(0);
   when(() => vm.pendingOrdersCount).thenReturn(0);
   when(() => vm.activeOrdersCount).thenReturn(0);

@@ -5,6 +5,7 @@ class TransactionModel {
   final String txId;
   final String orderId;
   final String companyId;
+  final String? companyName;
   final String supplierUid;
   final double totalAmount;
   final double commissionRate; // always 0.02
@@ -18,6 +19,7 @@ class TransactionModel {
     required this.txId,
     required this.orderId,
     required this.companyId,
+    this.companyName,
     required this.supplierUid,
     required this.totalAmount,
     required this.commissionRate,
@@ -35,6 +37,7 @@ class TransactionModel {
     txId: id,
     orderId: map['orderId'] ?? '',
     companyId: map['companyId'] ?? '',
+    companyName: map['companyName'],
     supplierUid: map['supplierUid'] ?? map['supplierId'] ?? '',
     totalAmount: (map['totalAmount'] as num?)?.toDouble() ?? 0.0,
     commissionRate: (map['commissionRate'] as num?)?.toDouble() ?? 0.02,
@@ -52,6 +55,7 @@ class TransactionModel {
   Map<String, dynamic> toMap() => {
     'orderId': orderId,
     'companyId': companyId,
+    if (companyName != null) 'companyName': companyName,
     'supplierUid': supplierUid,
     'totalAmount': totalAmount,
     'commissionRate': commissionRate,
